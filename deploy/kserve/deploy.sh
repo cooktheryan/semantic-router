@@ -32,6 +32,28 @@ EMBEDDING_MODEL="all-MiniLM-L12-v2"
 DRY_RUN=false
 SKIP_VALIDATION=false
 
+# Function to substitute variables in a file
+# Must be defined early as it's used in validation
+substitute_vars() {
+    local input_file="$1"
+    local output_file="$2"
+
+    sed -e "s/{{NAMESPACE}}/$NAMESPACE/g" \
+        -e "s/{{INFERENCESERVICE_NAME}}/$INFERENCESERVICE_NAME/g" \
+        -e "s/{{MODEL_NAME}}/$MODEL_NAME/g" \
+        -e "s|{{EMBEDDING_MODEL}}|$EMBEDDING_MODEL|g" \
+        -e "s/{{PREDICTOR_SERVICE_IP}}/${PREDICTOR_SERVICE_IP:-10.0.0.1}/g" \
+        -e "s/{{MODELS_PVC_SIZE}}/$MODELS_PVC_SIZE/g" \
+        -e "s/{{CACHE_PVC_SIZE}}/$CACHE_PVC_SIZE/g" \
+        "$input_file" > "$output_file"
+
+    # Handle storage class (optional)
+    if [ -n "$STORAGE_CLASS" ]; then
+        sed -i.bak "s/# storageClassName:.*/storageClassName: $STORAGE_CLASS/g" "$output_file"
+        rm -f "${output_file}.bak"
+    fi
+}
+
 # Usage function
 usage() {
     cat << EOF
@@ -213,6 +235,10 @@ if [ "$SKIP_VALIDATION" = false ]; then
     # Create stable ClusterIP service for predictor (KServe creates headless service by default)
     echo "Creating stable ClusterIP service for predictor..."
 
+    # Create temp directory if needed for template processing
+    TEMP_DIR=$(mktemp -d)
+    trap 'rm -rf "$TEMP_DIR"' EXIT
+
     # Use template file for stable service
     if [ -f "$SCRIPT_DIR/service-predictor-stable.yaml" ]; then
         substitute_vars "$SCRIPT_DIR/service-predictor-stable.yaml" "$TEMP_DIR/service-predictor-stable.yaml.tmp"
@@ -257,29 +283,11 @@ fi
 # Generate manifests
 echo -e "${BLUE}Step 2: Generating manifests...${NC}"
 
-TEMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TEMP_DIR"' EXIT
-
-# Function to substitute variables in a file
-substitute_vars() {
-    local input_file="$1"
-    local output_file="$2"
-
-    sed -e "s/{{NAMESPACE}}/$NAMESPACE/g" \
-        -e "s/{{INFERENCESERVICE_NAME}}/$INFERENCESERVICE_NAME/g" \
-        -e "s/{{MODEL_NAME}}/$MODEL_NAME/g" \
-        -e "s|{{EMBEDDING_MODEL}}|$EMBEDDING_MODEL|g" \
-        -e "s/{{PREDICTOR_SERVICE_IP}}/${PREDICTOR_SERVICE_IP:-10.0.0.1}/g" \
-        -e "s/{{MODELS_PVC_SIZE}}/$MODELS_PVC_SIZE/g" \
-        -e "s/{{CACHE_PVC_SIZE}}/$CACHE_PVC_SIZE/g" \
-        "$input_file" > "$output_file"
-
-    # Handle storage class (optional)
-    if [ -n "$STORAGE_CLASS" ]; then
-        sed -i.bak "s/# storageClassName:.*/storageClassName: $STORAGE_CLASS/g" "$output_file"
-        rm -f "${output_file}.bak"
-    fi
-}
+# Create temp directory if not already created during validation
+if [ -z "$TEMP_DIR" ]; then
+    TEMP_DIR=$(mktemp -d)
+    trap 'rm -rf "$TEMP_DIR"' EXIT
+fi
 
 # Process each manifest file
 for file in serviceaccount.yaml pvc.yaml configmap-router-config.yaml configmap-envoy-config.yaml peerauthentication.yaml deployment.yaml service.yaml route.yaml; do
