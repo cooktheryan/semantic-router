@@ -1,0 +1,56 @@
+# MaaS-billing integration example configuration
+# This is a reference configuration for deploying semantic router with github.com/opendatahub-io/maas-billing
+# Copy the maas_integration section to your config.yaml and adjust as needed
+
+maas_integration:
+  enabled: true  # Enable MaaS-billing integration
+
+  # Authentication header configuration
+  # These headers are set by the MaaS gateway (Kuadrant/Authorino) after authentication
+  authentication:
+    user_header: "x-auth-request-user"  # Header containing user identity
+    tier_header: "x-auth-request-tier"  # Header containing subscription tier (free/premium/enterprise)
+    fallback_user: "unknown"            # Fallback when user header is missing (for testing)
+    fallback_tier: "free"               # Fallback when tier header is missing (for testing)
+
+  # Metrics export configuration
+  # These metrics are scraped by MaaS-billing's Prometheus instance
+  metrics:
+    export_token_metrics: true          # Export token usage with user/tier labels
+    export_cache_metrics: true          # Export cache hit/miss metrics with user/tier labels
+    export_routing_metrics: true        # Export routing decisions with user/tier labels
+    export_security_metrics: true       # Export PII/jailbreak detections with user/tier labels
+    internal_cost_calculation: false    # Defer cost calculation to MaaS-billing
+                                        # Set to true temporarily if you want to validate MaaS billing accuracy
+
+  # Response header configuration
+  # These headers provide context to MaaS-billing about routing decisions
+  headers:
+    export_routing: true                # Export routing metadata (model, decision, category, reasoning)
+    export_cache: true                  # Export cache hit information
+    export_security: false              # Export security event details (optional)
+    prefix: "x-vsr-"                    # Header prefix (customize if needed to avoid conflicts)
+
+# Example Prometheus metrics exported when MaaS integration is enabled:
+#
+# semantic_router_tokens_total{user="user123",tier="premium",model="qwen3",type="prompt"} 1500
+# semantic_router_tokens_total{user="user123",tier="premium",model="qwen3",type="completion"} 500
+# semantic_router_requests_total{user="user123",tier="premium",model="qwen3",decision="code_generation"} 1
+# semantic_router_cache_hits_total{user="user456",tier="free",model="qwen3"} 5
+# semantic_router_reasoning_requests_total{user="user123",tier="premium",model="qwen3"} 1
+#
+# Example response headers exported when MaaS integration is enabled:
+#
+# x-vsr-model-selected: qwen3
+# x-vsr-decision: code_generation
+# x-vsr-category: coding
+# x-vsr-reasoning-enabled: on
+# x-vsr-cache-hit: false
+# x-vsr-system-prompt-injected: true
+#
+# MaaS-billing uses these metrics and headers to:
+# 1. Track usage per user and tier
+# 2. Calculate costs based on token consumption and model pricing
+# 3. Apply cache-tier pricing for cached responses
+# 4. Bill for security features (PII detection, jailbreak blocking)
+# 5. Track reasoning mode usage (higher token cost, premium feature)

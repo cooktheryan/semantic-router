@@ -10,6 +10,7 @@ import (
 
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/config"
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/consts"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/utils/security"
 )
 
 // Minimal fallback bucket configurations - used only when configuration is completely missing
@@ -873,4 +874,202 @@ func RecordEntropyClassificationMetrics(
 	if latencySeconds > 0 {
 		RecordEntropyClassificationLatency(latencySeconds)
 	}
+}
+
+// MaaS-billing integration metrics (with user and tier labels)
+// These metrics are only used when MaaS integration is enabled
+var (
+	// MaasTokensTotal tracks token usage by user, tier, model, and token type
+	MaasTokensTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "semantic_router_tokens_total",
+			Help: "Total number of tokens processed by semantic router (for MaaS-billing)",
+		},
+		[]string{"user", "tier", "model", "type"}, // type: "prompt" or "completion"
+	)
+
+	// MaasRequestsTotal tracks requests by user, tier, model, and decision
+	MaasRequestsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "semantic_router_requests_total",
+			Help: "Total number of requests processed by semantic router (for MaaS-billing)",
+		},
+		[]string{"user", "tier", "model", "decision"},
+	)
+
+	// MaasCacheHitsTotal tracks cache hits by user, tier, and model
+	MaasCacheHitsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "semantic_router_cache_hits_total",
+			Help: "Total number of cache hits by user and tier (for MaaS-billing)",
+		},
+		[]string{"user", "tier", "model"},
+	)
+
+	// MaasCacheMissesTotal tracks cache misses by user, tier, and model
+	MaasCacheMissesTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "semantic_router_cache_misses_total",
+			Help: "Total number of cache misses by user and tier (for MaaS-billing)",
+		},
+		[]string{"user", "tier", "model"},
+	)
+
+	// MaasPIIDetectionsTotal tracks PII detections by user, tier, and PII type
+	MaasPIIDetectionsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "semantic_router_pii_detections_total",
+			Help: "Total number of PII detections by user, tier, and PII type (for MaaS-billing)",
+		},
+		[]string{"user", "tier", "pii_type"},
+	)
+
+	// MaasJailbreakDetectionsTotal tracks jailbreak detections by user and tier
+	MaasJailbreakDetectionsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "semantic_router_jailbreak_detections_total",
+			Help: "Total number of jailbreak attempts detected by user and tier (for MaaS-billing)",
+		},
+		[]string{"user", "tier"},
+	)
+
+	// MaasReasoningRequestsTotal tracks reasoning mode usage by user, tier, and model
+	MaasReasoningRequestsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "semantic_router_reasoning_requests_total",
+			Help: "Total number of requests with reasoning mode enabled by user and tier (for MaaS-billing)",
+		},
+		[]string{"user", "tier", "model"},
+	)
+)
+
+// MaaS-specific recording functions
+
+// RecordMaasTokens records token usage with user/tier labels for MaaS-billing
+func RecordMaasTokens(user, tier, model, tokenType string, tokens float64) {
+	if user == "" {
+		user = consts.UnknownLabel
+	}
+	if tier == "" {
+		tier = consts.UnknownLabel
+	}
+	if model == "" {
+		model = consts.UnknownLabel
+	}
+
+	// Security: Sanitize model name to prevent Prometheus label injection
+	// Model comes from user request, so we must sanitize it
+	sanitizedModel, _ := security.SanitizePrometheusLabel(model)
+
+	MaasTokensTotal.WithLabelValues(user, tier, sanitizedModel, tokenType).Add(tokens)
+}
+
+// RecordMaasRequest records a request with user/tier labels for MaaS-billing
+func RecordMaasRequest(user, tier, model, decision string) {
+	if user == "" {
+		user = consts.UnknownLabel
+	}
+	if tier == "" {
+		tier = consts.UnknownLabel
+	}
+	if model == "" {
+		model = consts.UnknownLabel
+	}
+	if decision == "" {
+		decision = consts.UnknownLabel
+	}
+
+	// Security: Sanitize model name to prevent Prometheus label injection
+	sanitizedModel, _ := security.SanitizePrometheusLabel(model)
+	// Decision comes from config (should be safe), but sanitize anyway (defense in depth)
+	sanitizedDecision, _ := security.SanitizePrometheusLabel(decision)
+
+	MaasRequestsTotal.WithLabelValues(user, tier, sanitizedModel, sanitizedDecision).Inc()
+}
+
+// RecordMaasCacheHit records a cache hit with user/tier labels for MaaS-billing
+func RecordMaasCacheHit(user, tier, model string) {
+	if user == "" {
+		user = consts.UnknownLabel
+	}
+	if tier == "" {
+		tier = consts.UnknownLabel
+	}
+	if model == "" {
+		model = consts.UnknownLabel
+	}
+
+	// Security: Sanitize model name to prevent Prometheus label injection
+	sanitizedModel, _ := security.SanitizePrometheusLabel(model)
+
+	MaasCacheHitsTotal.WithLabelValues(user, tier, sanitizedModel).Inc()
+}
+
+// RecordMaasCacheMiss records a cache miss with user/tier labels for MaaS-billing
+func RecordMaasCacheMiss(user, tier, model string) {
+	if user == "" {
+		user = consts.UnknownLabel
+	}
+	if tier == "" {
+		tier = consts.UnknownLabel
+	}
+	if model == "" {
+		model = consts.UnknownLabel
+	}
+
+	// Security: Sanitize model name to prevent Prometheus label injection
+	sanitizedModel, _ := security.SanitizePrometheusLabel(model)
+
+	MaasCacheMissesTotal.WithLabelValues(user, tier, sanitizedModel).Inc()
+}
+
+// RecordMaasPIIDetection records a PII detection with user/tier labels for MaaS-billing
+func RecordMaasPIIDetection(user, tier, piiType string) {
+	if user == "" {
+		user = consts.UnknownLabel
+	}
+	if tier == "" {
+		tier = consts.UnknownLabel
+	}
+	if piiType == "" {
+		piiType = consts.UnknownLabel
+	}
+
+	// Security: Sanitize PII type to prevent Prometheus label injection
+	// PII type comes from classifier output (should be safe), but sanitize anyway (defense in depth)
+	sanitizedPIIType, _ := security.SanitizePrometheusLabel(piiType)
+
+	MaasPIIDetectionsTotal.WithLabelValues(user, tier, sanitizedPIIType).Inc()
+}
+
+// RecordMaasJailbreakDetection records a jailbreak detection with user/tier labels for MaaS-billing
+func RecordMaasJailbreakDetection(user, tier string) {
+	if user == "" {
+		user = consts.UnknownLabel
+	}
+	if tier == "" {
+		tier = consts.UnknownLabel
+	}
+
+	// Note: No additional labels need sanitization here (user/tier already sanitized in header extraction)
+
+	MaasJailbreakDetectionsTotal.WithLabelValues(user, tier).Inc()
+}
+
+// RecordMaasReasoningRequest records a reasoning mode request with user/tier labels for MaaS-billing
+func RecordMaasReasoningRequest(user, tier, model string) {
+	if user == "" {
+		user = consts.UnknownLabel
+	}
+	if tier == "" {
+		tier = consts.UnknownLabel
+	}
+	if model == "" {
+		model = consts.UnknownLabel
+	}
+
+	// Security: Sanitize model name to prevent Prometheus label injection
+	sanitizedModel, _ := security.SanitizePrometheusLabel(model)
+
+	MaasReasoningRequestsTotal.WithLabelValues(user, tier, sanitizedModel).Inc()
 }

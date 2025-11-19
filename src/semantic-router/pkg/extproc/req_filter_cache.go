@@ -8,6 +8,7 @@ import (
 
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/cache"
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/observability/logging"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/observability/metrics"
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/observability/tracing"
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/utils/http"
 )
@@ -60,6 +61,13 @@ func (r *OpenAIRouter) handleCaching(ctx *RequestContext, categoryName string) (
 		} else if found {
 			// Mark this request as a cache hit
 			ctx.VSRCacheHit = true
+
+			// Record MaaS cache hit metrics if enabled
+			// Optimization: Inline metric recording to avoid function call overhead
+			if r.Config != nil && r.Config.IsMaasIntegrationEnabled() && r.Config.ShouldExportCacheMetrics() {
+				metrics.RecordMaasCacheHit(ctx.MaasUser, ctx.MaasTier, requestModel)
+			}
+
 			// Log cache hit
 			logging.LogEvent("cache_hit", map[string]interface{}{
 				"request_id": ctx.RequestID,
@@ -72,6 +80,12 @@ func (r *OpenAIRouter) handleCaching(ctx *RequestContext, categoryName string) (
 			response := http.CreateCacheHitResponse(cachedResponse, ctx.ExpectStreamingResponse)
 			ctx.TraceContext = spanCtx
 			return response, true
+		} else {
+			// Cache miss - record MaaS metrics if enabled
+			// Optimization: Inline metric recording to avoid function call overhead
+			if r.Config != nil && r.Config.IsMaasIntegrationEnabled() && r.Config.ShouldExportCacheMetrics() {
+				metrics.RecordMaasCacheMiss(ctx.MaasUser, ctx.MaasTier, requestModel)
+			}
 		}
 		ctx.TraceContext = spanCtx
 	}

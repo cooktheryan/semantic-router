@@ -53,13 +53,66 @@ func (r *OpenAIRouter) handleResponseBody(v *ext_proc.ProcessingRequest_Response
 	promptTokens := int(parsed.Usage.PromptTokens)
 	completionTokens := int(parsed.Usage.CompletionTokens)
 
+	// Security: Validate token counts to prevent billing evasion
+	// Token counts should be non-negative and reasonable
+	if promptTokens < 0 || completionTokens < 0 {
+		logging.Warnf("Security: Negative token counts detected (possible billing evasion): prompt=%d, completion=%d - setting to 0",
+			promptTokens, completionTokens)
+		metrics.RecordRequestError(ctx.RequestModel, "invalid_token_count")
+		if promptTokens < 0 {
+			promptTokens = 0
+		}
+		if completionTokens < 0 {
+			completionTokens = 0
+		}
+	}
+
+	// Security: Log if token counts are zero (possible JSON parsing error or billing evasion)
+	if promptTokens == 0 && completionTokens == 0 && len(responseBody) > 0 {
+		logging.Warnf("Security: Zero token counts detected for non-empty response (possible billing evasion or parsing error): request_id=%s, model=%s",
+			ctx.RequestID, ctx.RequestModel)
+		metrics.RecordRequestError(ctx.RequestModel, "zero_token_count")
+	}
+
+	// Security: Validate token counts are reasonable (prevent absurdly large values)
+	const maxReasonableTokens = 1_000_000 // 1M tokens is very large
+	if promptTokens > maxReasonableTokens || completionTokens > maxReasonableTokens {
+		logging.Warnf("Security: Unusually large token counts detected (possible billing manipulation): prompt=%d, completion=%d, max=%d",
+			promptTokens, completionTokens, maxReasonableTokens)
+		metrics.RecordRequestError(ctx.RequestModel, "excessive_token_count")
+		// Don't cap the tokens - this could be legitimate, just log for investigation
+	}
+
 	// Record tokens used with the model that was used
 	if ctx.RequestModel != "" {
-		metrics.RecordModelTokensDetailed(
-			ctx.RequestModel,
-			float64(promptTokens),
-			float64(completionTokens),
-		)
+		// Optimization: Avoid duplicate metrics - only record MaaS metrics when MaaS is enabled
+		// MaaS metrics contain superset of information (user/tier/model vs just model)
+		isMaasEnabled := r.Config != nil && r.Config.IsMaasIntegrationEnabled()
+
+		if isMaasEnabled {
+			// MaaS mode: Record metrics with user/tier labels (more granular)
+			if r.Config.ShouldExportTokenMetrics() {
+				metrics.RecordMaasTokens(ctx.MaasUser, ctx.MaasTier, ctx.RequestModel, "prompt", float64(promptTokens))
+				metrics.RecordMaasTokens(ctx.MaasUser, ctx.MaasTier, ctx.RequestModel, "completion", float64(completionTokens))
+			}
+
+			if r.Config.ShouldExportRoutingMetrics() {
+				metrics.RecordMaasRequest(ctx.MaasUser, ctx.MaasTier, ctx.RequestModel, ctx.VSRSelectedDecisionName)
+			}
+
+			if ctx.VSRReasoningMode == "on" {
+				metrics.RecordMaasReasoningRequest(ctx.MaasUser, ctx.MaasTier, ctx.RequestModel)
+			}
+		} else {
+			// Standalone mode: Record standard metrics (backward compatible)
+			metrics.RecordModelTokensDetailed(
+				ctx.RequestModel,
+				float64(promptTokens),
+				float64(completionTokens),
+			)
+		}
+
+		// Always record latency metrics (operational, not billing-related)
 		metrics.RecordModelCompletionLatency(ctx.RequestModel, completionLatency.Seconds())
 
 		// Record TPOT (time per output token) if completion tokens are available
@@ -68,8 +121,8 @@ func (r *OpenAIRouter) handleResponseBody(v *ext_proc.ProcessingRequest_Response
 			metrics.RecordModelTPOT(ctx.RequestModel, timePerToken)
 		}
 
-		// Compute and record cost if pricing is configured
-		if r.Config != nil {
+		// Compute and record cost if pricing is configured (conditional based on MaaS config)
+		if r.Config != nil && r.Config.ShouldCalculateCostsInternally() {
 			promptRatePer1M, completionRatePer1M, currency, ok := r.Config.GetModelPricing(ctx.RequestModel)
 			if ok {
 				costAmount := (float64(promptTokens)*promptRatePer1M + float64(completionTokens)*completionRatePer1M) / 1_000_000.0
@@ -100,6 +153,19 @@ func (r *OpenAIRouter) handleResponseBody(v *ext_proc.ProcessingRequest_Response
 					"pricing":               "not_configured",
 				})
 			}
+		} else if r.Config != nil && r.Config.IsMaasIntegrationEnabled() {
+			// MaaS mode: log usage without cost (cost calculation deferred to MaaS-billing)
+			logging.LogEvent("llm_usage", map[string]interface{}{
+				"request_id":            ctx.RequestID,
+				"model":                 ctx.RequestModel,
+				"prompt_tokens":         promptTokens,
+				"completion_tokens":     completionTokens,
+				"total_tokens":          promptTokens + completionTokens,
+				"completion_latency_ms": completionLatency.Milliseconds(),
+				"maas_user":             ctx.MaasUser,
+				"maas_tier":             ctx.MaasTier,
+				"billing_mode":          "maas",
+			})
 		}
 	}
 

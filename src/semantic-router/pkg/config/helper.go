@@ -428,3 +428,116 @@ func (c *RouterConfig) GetCacheSimilarityThreshold() float32 {
 	}
 	return c.Threshold
 }
+
+// IsMaasIntegrationEnabled returns whether MaaS-billing integration is enabled
+func (c *RouterConfig) IsMaasIntegrationEnabled() bool {
+	return c.MaasIntegration.Enabled
+}
+
+// GetMaasUserHeader returns the header name for user identity (default: "x-auth-request-user")
+func (c *RouterConfig) GetMaasUserHeader() string {
+	if c.MaasIntegration.Authentication.UserHeader != "" {
+		return c.MaasIntegration.Authentication.UserHeader
+	}
+	return "x-auth-request-user"
+}
+
+// GetMaasTierHeader returns the header name for user tier (default: "x-auth-request-tier")
+func (c *RouterConfig) GetMaasTierHeader() string {
+	if c.MaasIntegration.Authentication.TierHeader != "" {
+		return c.MaasIntegration.Authentication.TierHeader
+	}
+	return "x-auth-request-tier"
+}
+
+// GetMaasFallbackUser returns the fallback user when auth header is missing (default: "unknown")
+func (c *RouterConfig) GetMaasFallbackUser() string {
+	if c.MaasIntegration.Authentication.FallbackUser != "" {
+		return c.MaasIntegration.Authentication.FallbackUser
+	}
+	return "unknown"
+}
+
+// GetMaasFallbackTier returns the fallback tier when auth header is missing (default: "free")
+func (c *RouterConfig) GetMaasFallbackTier() string {
+	if c.MaasIntegration.Authentication.FallbackTier != "" {
+		return c.MaasIntegration.Authentication.FallbackTier
+	}
+	return "free"
+}
+
+// ShouldExportTokenMetrics returns whether to export token metrics with user/tier labels
+func (c *RouterConfig) ShouldExportTokenMetrics() bool {
+	// If MaaS not enabled, no need to export with user/tier labels
+	if !c.IsMaasIntegrationEnabled() {
+		return false
+	}
+	return c.MaasIntegration.Metrics.ExportTokenMetrics
+}
+
+// ShouldExportCacheMetrics returns whether to export cache metrics with user/tier labels
+func (c *RouterConfig) ShouldExportCacheMetrics() bool {
+	if !c.IsMaasIntegrationEnabled() {
+		return false
+	}
+	return c.MaasIntegration.Metrics.ExportCacheMetrics
+}
+
+// ShouldExportRoutingMetrics returns whether to export routing metrics with user/tier labels
+func (c *RouterConfig) ShouldExportRoutingMetrics() bool {
+	if !c.IsMaasIntegrationEnabled() {
+		return false
+	}
+	return c.MaasIntegration.Metrics.ExportRoutingMetrics
+}
+
+// ShouldExportSecurityMetrics returns whether to export security metrics with user/tier labels
+func (c *RouterConfig) ShouldExportSecurityMetrics() bool {
+	if !c.IsMaasIntegrationEnabled() {
+		return false
+	}
+	return c.MaasIntegration.Metrics.ExportSecurityMetrics
+}
+
+// ShouldCalculateCostsInternally returns whether semantic router should calculate costs
+// When MaaS is enabled, cost calculation is deferred to MaaS-billing platform by default
+func (c *RouterConfig) ShouldCalculateCostsInternally() bool {
+	// If MaaS not enabled, always calculate costs internally (standalone mode)
+	if !c.IsMaasIntegrationEnabled() {
+		return true
+	}
+	// When MaaS is enabled, only calculate if explicitly requested
+	return c.MaasIntegration.Metrics.InternalCostCalculation
+}
+
+// ShouldExportRoutingHeaders returns whether to export routing decision headers
+func (c *RouterConfig) ShouldExportRoutingHeaders() bool {
+	if !c.IsMaasIntegrationEnabled() {
+		return false
+	}
+	return c.MaasIntegration.Headers.ExportRouting
+}
+
+// ShouldExportCacheHeaders returns whether to export cache hit headers
+func (c *RouterConfig) ShouldExportCacheHeaders() bool {
+	if !c.IsMaasIntegrationEnabled() {
+		return false
+	}
+	return c.MaasIntegration.Headers.ExportCache
+}
+
+// ShouldExportSecurityHeaders returns whether to export security headers
+func (c *RouterConfig) ShouldExportSecurityHeaders() bool {
+	if !c.IsMaasIntegrationEnabled() {
+		return false
+	}
+	return c.MaasIntegration.Headers.ExportSecurity
+}
+
+// GetMaasHeaderPrefix returns the prefix for MaaS response headers (default: "x-vsr-")
+func (c *RouterConfig) GetMaasHeaderPrefix() string {
+	if c.MaasIntegration.Headers.Prefix != "" {
+		return c.MaasIntegration.Headers.Prefix
+	}
+	return "x-vsr-"
+}

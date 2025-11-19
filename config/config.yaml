@@ -1,3 +1,28 @@
+# MaaS-billing integration configuration
+# IMPORTANT: Disabled by default to maintain backward compatibility with existing deployments
+# When enabled, semantic router exports metrics with user/tier labels and defers cost calculation to MaaS-billing
+# Only enable this when deploying with github.com/opendatahub-io/maas-billing
+#
+# To enable MaaS integration, uncomment and set enabled: true
+# maas_integration:
+#   enabled: true  # Enable MaaS-billing integration (default: false)
+#   authentication:
+#     user_header: "x-auth-request-user"  # Header containing user identity (set by MaaS gateway)
+#     tier_header: "x-auth-request-tier"  # Header containing subscription tier (set by MaaS gateway)
+#     fallback_user: "unknown"            # Fallback user when header is missing
+#     fallback_tier: "free"               # Fallback tier when header is missing
+#   metrics:
+#     export_token_metrics: true          # Export token metrics with user/tier labels
+#     export_cache_metrics: true          # Export cache metrics with user/tier labels
+#     export_routing_metrics: true        # Export routing decision metrics with user/tier labels
+#     export_security_metrics: true       # Export security metrics (PII, jailbreak) with user/tier labels
+#     internal_cost_calculation: false    # Defer cost calculation to MaaS-billing (set to true for validation)
+#   headers:
+#     export_routing: true                # Export routing decision headers (x-vsr-model-selected, x-vsr-decision, etc.)
+#     export_cache: true                  # Export cache hit headers (x-vsr-cache-hit)
+#     export_security: false              # Export security headers (x-vsr-request-blocked, x-vsr-block-reason)
+#     prefix: "x-vsr-"                    # Header prefix for all exported headers
+
 bert_model:
   model_id: models/all-MiniLM-L12-v2
   threshold: 0.6

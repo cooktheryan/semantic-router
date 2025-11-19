@@ -13,6 +13,7 @@ import (
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/headers"
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/observability/logging"
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/observability/tracing"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/utils/security"
 )
 
 // RequestContext holds the context for processing a request
@@ -41,6 +42,10 @@ type RequestContext struct {
 	VSRCacheHit             bool             // Whether this request hit the cache
 	VSRInjectedSystemPrompt bool             // Whether a system prompt was injected into the request
 	VSRSelectedDecision     *config.Decision // The decision object selected by DecisionEngine (for plugins)
+
+	// MaaS-billing integration (user/tier for metrics and billing)
+	MaasUser string // User identity extracted from auth headers (e.g., "x-auth-request-user")
+	MaasTier string // User tier extracted from auth headers (e.g., "x-auth-request-tier")
 
 	// Tracing context
 	TraceContext context.Context // OpenTelemetry trace context for span propagation
@@ -86,6 +91,56 @@ func (r *OpenAIRouter) handleRequestHeaders(v *ext_proc.ProcessingRequest_Reques
 		if strings.ToLower(h.Key) == headers.RequestID {
 			ctx.RequestID = headerValue
 		}
+	}
+
+	// Extract MaaS user/tier from headers if MaaS integration is enabled
+	if r.Config != nil && r.Config.IsMaasIntegrationEnabled() {
+		// Extract user identity
+		userHeader := r.Config.GetMaasUserHeader()
+		if user, ok := ctx.Headers[userHeader]; ok && user != "" {
+			// Security: Validate and sanitize user header to prevent spoofing/injection
+			if trusted, reason := security.ValidateTrustedHeader(userHeader, user); !trusted {
+				logging.Warnf("Untrusted user header detected (%s): %s - using fallback", reason, user)
+				ctx.MaasUser = r.Config.GetMaasFallbackUser()
+			} else {
+				// Sanitize for safe use in Prometheus labels
+				sanitizedUser, modified := security.SanitizeMaasUser(user)
+				if modified {
+					logging.Warnf("Sanitized MaaS user header from '%s' to '%s' for security", user, sanitizedUser)
+				}
+				ctx.MaasUser = sanitizedUser
+				logging.Debugf("Extracted MaaS user from header %s: %s", userHeader, sanitizedUser)
+			}
+		} else {
+			ctx.MaasUser = r.Config.GetMaasFallbackUser()
+			logging.Debugf("Using fallback MaaS user: %s", ctx.MaasUser)
+		}
+
+		// Extract user tier
+		tierHeader := r.Config.GetMaasTierHeader()
+		if tier, ok := ctx.Headers[tierHeader]; ok && tier != "" {
+			// Security: Validate and sanitize tier header to prevent spoofing/injection
+			if trusted, reason := security.ValidateTrustedHeader(tierHeader, tier); !trusted {
+				logging.Warnf("Untrusted tier header detected (%s): %s - using fallback", reason, tier)
+				ctx.MaasTier = r.Config.GetMaasFallbackTier()
+			} else {
+				// Sanitize for safe use in Prometheus labels
+				sanitizedTier, modified := security.SanitizeMaasTier(tier)
+				if modified {
+					logging.Warnf("Sanitized MaaS tier header from '%s' to '%s' for security", tier, sanitizedTier)
+				}
+				ctx.MaasTier = sanitizedTier
+				logging.Debugf("Extracted MaaS tier from header %s: %s", tierHeader, sanitizedTier)
+			}
+		} else {
+			ctx.MaasTier = r.Config.GetMaasFallbackTier()
+			logging.Debugf("Using fallback MaaS tier: %s", ctx.MaasTier)
+		}
+
+		// Add user/tier to trace span attributes
+		tracing.SetSpanAttributes(span,
+			attribute.String("maas.user", ctx.MaasUser),
+			attribute.String("maas.tier", ctx.MaasTier))
 	}
 
 	// Set request metadata on span

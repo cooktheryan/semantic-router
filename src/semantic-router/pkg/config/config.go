@@ -38,6 +38,8 @@ type RouterConfig struct {
 	APIServer `yaml:",inline"`
 	// Router-specific options
 	RouterOptions `yaml:",inline"`
+	// MaaS-billing integration configuration
+	MaasIntegration MaasIntegrationConfig `yaml:"maas_integration"`
 	/*
 		Dynamic: User Facing Configurations
 		Timing: Should be dynamically handled when running router.
@@ -81,6 +83,94 @@ type RouterOptions struct {
 
 	// Gateway route cache clearing
 	ClearRouteCache bool `yaml:"clear_route_cache"`
+}
+
+// MaasIntegrationConfig represents configuration for MaaS-billing integration
+// MaaS-billing (github.com/opendatahub-io/maas-billing) provides centralized
+// usage tracking and billing for LLM services. When enabled, semantic router
+// exports metrics with user/tier labels and defers cost calculation to MaaS.
+type MaasIntegrationConfig struct {
+	// Enable MaaS integration (default: true)
+	// When enabled, semantic router exports Prometheus metrics with user/tier labels
+	// and optionally disables internal cost calculation
+	Enabled bool `yaml:"enabled"`
+
+	// Authentication header configuration
+	Authentication MaasAuthConfig `yaml:"authentication"`
+
+	// Metrics export configuration
+	Metrics MaasMetricsConfig `yaml:"metrics"`
+
+	// Header export configuration for routing metadata
+	Headers MaasHeadersConfig `yaml:"headers"`
+}
+
+// MaasAuthConfig represents authentication configuration for MaaS integration
+// MaaS gateway (Kuadrant/Authorino) adds authentication headers that identify
+// the user and their subscription tier for billing purposes
+type MaasAuthConfig struct {
+	// Header name containing the user identity (default: "x-auth-request-user")
+	// This header is set by the MaaS gateway after authentication
+	UserHeader string `yaml:"user_header"`
+
+	// Header name containing the user tier (default: "x-auth-request-tier")
+	// Tier determines billing rates (e.g., "free", "premium", "enterprise")
+	TierHeader string `yaml:"tier_header"`
+
+	// Fallback user when header is missing (default: "unknown")
+	// Used for testing or when requests bypass MaaS gateway
+	FallbackUser string `yaml:"fallback_user"`
+
+	// Fallback tier when header is missing (default: "free")
+	FallbackTier string `yaml:"fallback_tier"`
+}
+
+// MaasMetricsConfig represents metrics export configuration for MaaS integration
+// When MaaS integration is enabled, metrics are exported with user/tier labels
+// that MaaS-billing uses for usage tracking and cost calculation
+type MaasMetricsConfig struct {
+	// Export token-level metrics with user/tier labels (default: true)
+	// Metrics: semantic_router_tokens_total{user, tier, model, type}
+	ExportTokenMetrics bool `yaml:"export_token_metrics"`
+
+	// Export cache metrics with user/tier labels (default: true)
+	// Metrics: semantic_router_cache_hits_total{user, tier, model}
+	ExportCacheMetrics bool `yaml:"export_cache_metrics"`
+
+	// Export routing decision metrics with user/tier labels (default: true)
+	// Metrics: semantic_router_requests_total{user, tier, model, decision}
+	ExportRoutingMetrics bool `yaml:"export_routing_metrics"`
+
+	// Export security metrics (PII, jailbreak) with user/tier labels (default: true)
+	// Metrics: semantic_router_pii_detections_total{user, tier, pii_type}
+	//         semantic_router_jailbreak_detections_total{user, tier}
+	ExportSecurityMetrics bool `yaml:"export_security_metrics"`
+
+	// Calculate costs internally (default: false for MaaS mode)
+	// When false, cost calculation is deferred to MaaS-billing platform
+	// When true, semantic router calculates costs and exports cost metrics
+	InternalCostCalculation bool `yaml:"internal_cost_calculation"`
+}
+
+// MaasHeadersConfig represents response header export configuration
+// These headers provide MaaS-billing with context about routing decisions,
+// cache hits, and security policies applied to each request
+type MaasHeadersConfig struct {
+	// Export routing decision headers (default: true)
+	// Headers: x-vsr-model-selected, x-vsr-decision, x-vsr-category, x-vsr-reasoning-enabled
+	ExportRouting bool `yaml:"export_routing"`
+
+	// Export cache hit headers (default: true)
+	// Headers: x-vsr-cache-hit, x-vsr-cache-similarity
+	ExportCache bool `yaml:"export_cache"`
+
+	// Export security headers (default: true)
+	// Headers: x-vsr-request-blocked, x-vsr-block-reason, x-vsr-pii-detected
+	ExportSecurity bool `yaml:"export_security"`
+
+	// Header prefix for all exported headers (default: "x-vsr-")
+	// Customizable to avoid header name conflicts
+	Prefix string `yaml:"prefix"`
 }
 
 // InlineModels represents the configuration for models that are built into the binary

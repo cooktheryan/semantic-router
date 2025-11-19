@@ -11,6 +11,7 @@ import (
 
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/headers"
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/observability/metrics"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/utils/security"
 )
 
 // handleResponseHeaders processes the response headers
@@ -54,57 +55,156 @@ func (r *OpenAIRouter) handleResponseHeaders(v *ext_proc.ProcessingRequest_Respo
 	if isSuccessful && !ctx.VSRCacheHit && ctx != nil {
 		var setHeaders []*core.HeaderValueOption
 
-		// Add x-vsr-selected-category header (from domain classification)
-		if ctx.VSRSelectedCategory != "" {
+		// Optimization: Check config once and cache decisions
+		isMaasEnabled := r.Config != nil && r.Config.IsMaasIntegrationEnabled()
+		shouldAddRoutingHeaders := true
+		var prefix string
+
+		if isMaasEnabled {
+			// MaaS mode: Check if we should export headers and get prefix
+			shouldAddRoutingHeaders = r.Config.ShouldExportRoutingHeaders()
+			if shouldAddRoutingHeaders {
+				prefix = r.Config.GetMaasHeaderPrefix()
+			}
+		}
+		// Standalone mode: always add headers, no prefix
+
+		if shouldAddRoutingHeaders {
+
+			// Optimization: Build headers based on mode (avoid repeated prefix checks)
+			if prefix != "" {
+				// MaaS mode: Use custom prefix
+				if ctx.VSRSelectedCategory != "" {
+					// Security: Sanitize header value to prevent CRLF injection
+					sanitizedCategory, _ := security.SanitizeHTTPHeader(ctx.VSRSelectedCategory)
+					setHeaders = append(setHeaders, &core.HeaderValueOption{
+						Header: &core.HeaderValue{
+							Key:      prefix + "category",
+							RawValue: []byte(sanitizedCategory),
+						},
+					})
+				}
+
+				if ctx.VSRSelectedDecisionName != "" {
+					// Security: Sanitize header value to prevent CRLF injection
+					sanitizedDecision, _ := security.SanitizeHTTPHeader(ctx.VSRSelectedDecisionName)
+					setHeaders = append(setHeaders, &core.HeaderValueOption{
+						Header: &core.HeaderValue{
+							Key:      prefix + "decision",
+							RawValue: []byte(sanitizedDecision),
+						},
+					})
+				}
+
+				if ctx.VSRReasoningMode != "" {
+					// Security: Sanitize header value to prevent CRLF injection
+					sanitizedReasoning, _ := security.SanitizeHTTPHeader(ctx.VSRReasoningMode)
+					setHeaders = append(setHeaders, &core.HeaderValueOption{
+						Header: &core.HeaderValue{
+							Key:      prefix + "reasoning-enabled",
+							RawValue: []byte(sanitizedReasoning),
+						},
+					})
+				}
+
+				if ctx.VSRSelectedModel != "" {
+					// Security: Sanitize header value to prevent CRLF injection
+					sanitizedModel, _ := security.SanitizeHTTPHeader(ctx.VSRSelectedModel)
+					setHeaders = append(setHeaders, &core.HeaderValueOption{
+						Header: &core.HeaderValue{
+							Key:      prefix + "model-selected",
+							RawValue: []byte(sanitizedModel),
+						},
+					})
+				}
+
+				injectedValue := "false"
+				if ctx.VSRInjectedSystemPrompt {
+					injectedValue = "true"
+				}
+				setHeaders = append(setHeaders, &core.HeaderValueOption{
+					Header: &core.HeaderValue{
+						Key:      prefix + "system-prompt-injected",
+						RawValue: []byte(injectedValue),
+					},
+				})
+			} else {
+				// Standalone mode: Use standard header names (no prefix)
+				if ctx.VSRSelectedCategory != "" {
+					// Security: Sanitize header value to prevent CRLF injection
+					sanitizedCategory, _ := security.SanitizeHTTPHeader(ctx.VSRSelectedCategory)
+					setHeaders = append(setHeaders, &core.HeaderValueOption{
+						Header: &core.HeaderValue{
+							Key:      headers.VSRSelectedCategory,
+							RawValue: []byte(sanitizedCategory),
+						},
+					})
+				}
+
+				if ctx.VSRSelectedDecisionName != "" {
+					// Security: Sanitize header value to prevent CRLF injection
+					sanitizedDecision, _ := security.SanitizeHTTPHeader(ctx.VSRSelectedDecisionName)
+					setHeaders = append(setHeaders, &core.HeaderValueOption{
+						Header: &core.HeaderValue{
+							Key:      headers.VSRSelectedDecision,
+							RawValue: []byte(sanitizedDecision),
+						},
+					})
+				}
+
+				if ctx.VSRReasoningMode != "" {
+					// Security: Sanitize header value to prevent CRLF injection
+					sanitizedReasoning, _ := security.SanitizeHTTPHeader(ctx.VSRReasoningMode)
+					setHeaders = append(setHeaders, &core.HeaderValueOption{
+						Header: &core.HeaderValue{
+							Key:      headers.VSRSelectedReasoning,
+							RawValue: []byte(sanitizedReasoning),
+						},
+					})
+				}
+
+				if ctx.VSRSelectedModel != "" {
+					// Security: Sanitize header value to prevent CRLF injection
+					sanitizedModel, _ := security.SanitizeHTTPHeader(ctx.VSRSelectedModel)
+					setHeaders = append(setHeaders, &core.HeaderValueOption{
+						Header: &core.HeaderValue{
+							Key:      headers.VSRSelectedModel,
+							RawValue: []byte(sanitizedModel),
+						},
+					})
+				}
+
+				injectedValue := "false"
+				if ctx.VSRInjectedSystemPrompt {
+					injectedValue = "true"
+				}
+				setHeaders = append(setHeaders, &core.HeaderValueOption{
+					Header: &core.HeaderValue{
+						Key:      headers.VSRInjectedSystemPrompt,
+						RawValue: []byte(injectedValue),
+					},
+				})
+			}
+		}
+
+		// Add cache hit header if MaaS integration is enabled and cache export is configured
+		// Optimization: Reuse isMaasEnabled check from above
+		if isMaasEnabled && r.Config.ShouldExportCacheHeaders() {
+			// Reuse prefix from above if available, otherwise get it
+			if prefix == "" {
+				prefix = r.Config.GetMaasHeaderPrefix()
+			}
+			cacheHitValue := "false"
+			if ctx.VSRCacheHit {
+				cacheHitValue = "true"
+			}
 			setHeaders = append(setHeaders, &core.HeaderValueOption{
 				Header: &core.HeaderValue{
-					Key:      headers.VSRSelectedCategory,
-					RawValue: []byte(ctx.VSRSelectedCategory),
+					Key:      prefix + "cache-hit",
+					RawValue: []byte(cacheHitValue),
 				},
 			})
 		}
-
-		// Add x-vsr-selected-decision header (from decision evaluation)
-		if ctx.VSRSelectedDecisionName != "" {
-			setHeaders = append(setHeaders, &core.HeaderValueOption{
-				Header: &core.HeaderValue{
-					Key:      headers.VSRSelectedDecision,
-					RawValue: []byte(ctx.VSRSelectedDecisionName),
-				},
-			})
-		}
-
-		// Add x-vsr-selected-reasoning header
-		if ctx.VSRReasoningMode != "" {
-			setHeaders = append(setHeaders, &core.HeaderValueOption{
-				Header: &core.HeaderValue{
-					Key:      headers.VSRSelectedReasoning,
-					RawValue: []byte(ctx.VSRReasoningMode),
-				},
-			})
-		}
-
-		// Add x-vsr-selected-model header
-		if ctx.VSRSelectedModel != "" {
-			setHeaders = append(setHeaders, &core.HeaderValueOption{
-				Header: &core.HeaderValue{
-					Key:      headers.VSRSelectedModel,
-					RawValue: []byte(ctx.VSRSelectedModel),
-				},
-			})
-		}
-
-		// Add x-vsr-injected-system-prompt header
-		injectedValue := "false"
-		if ctx.VSRInjectedSystemPrompt {
-			injectedValue = "true"
-		}
-		setHeaders = append(setHeaders, &core.HeaderValueOption{
-			Header: &core.HeaderValue{
-				Key:      headers.VSRInjectedSystemPrompt,
-				RawValue: []byte(injectedValue),
-			},
-		})
 
 		// Create header mutation if we have headers to add
 		if len(setHeaders) > 0 {
