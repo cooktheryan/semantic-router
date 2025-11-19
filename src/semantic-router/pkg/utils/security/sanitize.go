@@ -28,7 +28,7 @@ var (
 	headerSafeRegex = regexp.MustCompile(`^[a-zA-Z0-9 _\-\.:/]+$`)
 
 	// Dangerous patterns that could indicate attack attempts
-	crlfPattern      = regexp.MustCompile(`[\r\n]`)
+	crlfPattern        = regexp.MustCompile(`[\r\n]`)
 	controlCharPattern = regexp.MustCompile(`[\x00-\x1F\x7F]`)
 )
 

@@ -267,6 +267,7 @@ See [maas-security.md](./maas-security.md) for security architecture.
 **MaaS integration is disabled by default.**
 
 Existing deployments upgrading semantic router:
+
 - ✅ No configuration changes required
 - ✅ All functionality preserved
 - ✅ No performance impact when disabled

@@ -6,9 +6,9 @@ import (
 
 func TestSanitizePrometheusLabel(t *testing.T) {
 	tests := []struct {
-		name           string
-		input          string
-		expectedOutput string
+		name             string
+		input            string
+		expectedOutput   string
 		expectedModified bool
 	}{
 		{
@@ -188,24 +188,24 @@ func TestSanitizeHTTPHeader(t *testing.T) {
 
 func TestValidateTrustedHeader(t *testing.T) {
 	tests := []struct {
-		name          string
-		headerName    string
-		headerValue   string
-		expectedValid bool
+		name           string
+		headerName     string
+		headerValue    string
+		expectedValid  bool
 		expectedReason string
 	}{
 		{
-			name:          "valid user header",
-			headerName:    "x-auth-request-user",
-			headerValue:   "alice",
-			expectedValid: true,
+			name:           "valid user header",
+			headerName:     "x-auth-request-user",
+			headerValue:    "alice",
+			expectedValid:  true,
 			expectedReason: "",
 		},
 		{
-			name:          "valid tier header",
-			headerName:    "x-auth-request-tier",
-			headerValue:   "premium",
-			expectedValid: true,
+			name:           "valid tier header",
+			headerName:     "x-auth-request-tier",
+			headerValue:    "premium",
+			expectedValid:  true,
 			expectedReason: "",
 		},
 		{

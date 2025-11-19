@@ -254,28 +254,27 @@ data:
           deployment_environment: "production"
 
     # MaaS-billing integration configuration
-    # Optional - only enable when deploying with MaaS-billing
-    # maas_integration:
-    #   enabled: true  # Enable MaaS-billing integration
-    #
-    #   # Authentication header configuration
-    #   authentication:
-    #     user_header: "x-auth-request-user"
-    #     tier_header: "x-auth-request-tier"
-    #     fallback_user: "unknown"
-    #     fallback_tier: "free"
-    #
-    #   # Metrics export configuration
-    #   metrics:
-    #     export_token_metrics: true
-    #     export_cache_metrics: true
-    #     export_routing_metrics: true
-    #     export_security_metrics: true
-    #     internal_cost_calculation: false
-    #
-    #   # Response header configuration
-    #   headers:
-    #     export_routing: true
-    #     export_cache: true
-    #     export_security: false
-    #     prefix: "x-vsr-"
+    maas_integration:
+      enabled: true  # Enable MaaS-billing integration
+
+      # Authentication header configuration
+      authentication:
+        user_header: "x-auth-request-user"
+        tier_header: "x-auth-request-tier"
+        fallback_user: "unknown"
+        fallback_tier: "free"
+
+      # Metrics export configuration
+      metrics:
+        export_token_metrics: true
+        export_cache_metrics: true
+        export_routing_metrics: true
+        export_security_metrics: true
+        internal_cost_calculation: false
+
+      # Response header configuration
+      headers:
+        export_routing: true
+        export_cache: true
+        export_security: false
+        prefix: "x-vsr-"
