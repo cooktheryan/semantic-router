@@ -121,6 +121,39 @@ func validateConfigStructure(cfg *RouterConfig) error {
 		return err
 	}
 
+	// Validate MaaS configuration if enabled
+	if err := validateMaaSConfig(&cfg.MaaS); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateMaaSConfig validates the MaaS (Model as a Service) configuration
+func validateMaaSConfig(maas *MaaSConfig) error {
+	// If MaaS is disabled, no validation needed
+	if !maas.Enabled {
+		return nil
+	}
+
+	// Validate required fields when MaaS is enabled
+	if maas.APIURL == "" {
+		return fmt.Errorf("maas.api_url is required when maas.enabled is true")
+	}
+
+	if maas.ModelURL == "" {
+		return fmt.Errorf("maas.model_url is required when maas.enabled is true")
+	}
+
+	// Validate that URLs are properly formatted
+	if !strings.HasPrefix(maas.APIURL, "http://") && !strings.HasPrefix(maas.APIURL, "https://") {
+		return fmt.Errorf("maas.api_url must start with http:// or https://, got: %s", maas.APIURL)
+	}
+
+	if !strings.HasPrefix(maas.ModelURL, "http://") && !strings.HasPrefix(maas.ModelURL, "https://") {
+		return fmt.Errorf("maas.model_url must start with http:// or https://, got: %s", maas.ModelURL)
+	}
+
 	return nil
 }
 

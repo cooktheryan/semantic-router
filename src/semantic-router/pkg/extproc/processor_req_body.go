@@ -304,6 +304,18 @@ func (r *OpenAIRouter) createRoutingResponse(model string, endpoint string, modi
 		}
 	}
 
+	// Apply MaaS authorization header if MaaS is enabled
+	if r.Config.IsMaaSEnabled() {
+		maasAuthHeader, maasErr := r.buildMaaSAuthHeader()
+		if maasErr != nil {
+			// Log error but continue - the request will fail at the upstream with 401/403
+			logging.Errorf("Failed to build MaaS auth header: %v - request will likely fail at upstream", maasErr)
+		} else if maasAuthHeader != nil {
+			setHeaders = append(setHeaders, maasAuthHeader)
+			logging.Infof("Injected MaaS Authorization header for request %s", ctx.RequestID)
+		}
+	}
+
 	headerMutation := &ext_proc.HeaderMutation{
 		RemoveHeaders: removeHeaders,
 		SetHeaders:    setHeaders,

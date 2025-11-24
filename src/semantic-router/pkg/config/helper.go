@@ -428,3 +428,25 @@ func (c *RouterConfig) GetCacheSimilarityThreshold() float32 {
 	}
 	return c.Threshold
 }
+
+// IsMaaSEnabled checks if MaaS (Model as a Service) integration is enabled
+func (c *RouterConfig) IsMaaSEnabled() bool {
+	return c.MaaS.Enabled
+}
+
+// GetMaaSTokenExpiration returns the MaaS token expiration duration, defaulting to "10m"
+func (c *RouterConfig) GetMaaSTokenExpiration() string {
+	if c.MaaS.TokenExpiration != "" {
+		return c.MaaS.TokenExpiration
+	}
+	return "10m" // Default to 10 minutes
+}
+
+// GetMaaSServiceAccountTokenPath returns the path to the Kubernetes ServiceAccount token
+// Returns the default path if not specified in config
+func (c *RouterConfig) GetMaaSServiceAccountTokenPath() string {
+	if c.MaaS.ServiceAccountTokenPath != "" {
+		return c.MaaS.ServiceAccountTokenPath
+	}
+	return "/var/run/secrets/kubernetes.io/serviceaccount/token" // Default Kubernetes SA token path
+}

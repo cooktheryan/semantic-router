@@ -131,6 +131,9 @@ type BackendModels struct {
 
 	// vLLM endpoints configuration for multiple backend support
 	VLLMEndpoints []VLLMEndpoint `yaml:"vllm_endpoints"`
+
+	// MaaS (Model as a Service) configuration for OpenShift AI integration
+	MaaS MaaSConfig `yaml:"maas"`
 }
 
 type ReasoningConfig struct {
@@ -398,6 +401,30 @@ type VLLMEndpoint struct {
 
 	// Load balancing weight for this endpoint
 	Weight int `yaml:"weight,omitempty"`
+}
+
+// MaaSConfig represents configuration for Model as a Service (OpenShift AI) integration
+type MaaSConfig struct {
+	// Enable MaaS integration (default: false)
+	// When enabled, routes requests to MaaS instead of vLLM/KServe endpoints
+	Enabled bool `yaml:"enabled"`
+
+	// Base URL for MaaS API (e.g., https://maas.apps.example.com)
+	// Required when Enabled is true
+	// This is used to construct the token endpoint: {APIURL}/maas-api/v1/tokens
+	APIURL string `yaml:"api_url,omitempty"`
+
+	// Model inference endpoint URL (e.g., https://maas.apps.example.com/v1/chat/completions)
+	// Required when Enabled is true
+	ModelURL string `yaml:"model_url,omitempty"`
+
+	// Token expiration duration for MaaS tokens (default: "10m")
+	// Format: duration string (e.g., "10m", "1h", "30s")
+	TokenExpiration string `yaml:"token_expiration,omitempty"`
+
+	// Path to Kubernetes ServiceAccount token file
+	// Default: /var/run/secrets/kubernetes.io/serviceaccount/token
+	ServiceAccountTokenPath string `yaml:"service_account_token_path,omitempty"`
 }
 
 // ModelPricing represents configuration for model-specific parameters

@@ -52,13 +52,12 @@ vllm_endpoints:
 
 # MaaS (Model as a Service) Configuration - OpenShift AI Integration
 # When enabled, routes requests to MaaS instead of vLLM/KServe endpoints
-# Uncomment and configure the section below to enable MaaS integration
-# maas:
-#   enabled: false  # Set to true to enable MaaS integration (default: false)
-#   api_url: "https://maas.apps.example.com"  # Base URL for MaaS API (required when enabled)
-#   model_url: "https://maas.apps.example.com/v1/chat/completions"  # Model inference endpoint (required when enabled)
-#   token_expiration: "10m"  # Token expiration duration (default: "10m", format: duration string like "10m", "1h", "30s")
-#   service_account_token_path: "/var/run/secrets/kubernetes.io/serviceaccount/token"  # Path to ServiceAccount token (default shown)
+maas:
+  enabled: true  # Enable MaaS integration for testing
+  api_url: "https://maas.apps.semantic.octo-emerging.redhataicoe.com"  # Base URL for MaaS API
+  model_url: "https://maas.apps.semantic.octo-emerging.redhataicoe.com/v1/chat/completions"  # Model inference endpoint
+  token_expiration: "10m"  # Token expiration duration
+  service_account_token_path: "/var/run/secrets/kubernetes.io/serviceaccount/token"  # Path to ServiceAccount token
 
 model_config:
   "qwen3":

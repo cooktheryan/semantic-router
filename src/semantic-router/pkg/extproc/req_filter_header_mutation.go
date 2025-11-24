@@ -1,6 +1,8 @@
 package extproc
 
 import (
+	"fmt"
+
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/config"
@@ -55,4 +57,35 @@ func (r *OpenAIRouter) buildHeaderMutations(decision *config.Decision) ([]*corev
 	}
 
 	return setHeaders, removeHeaders
+}
+
+// buildMaaSAuthHeader builds the Authorization header for MaaS requests
+// Returns the header and any error encountered during token acquisition
+func (r *OpenAIRouter) buildMaaSAuthHeader() (*corev3.HeaderValueOption, error) {
+	// Check if MaaS is enabled
+	if !r.Config.IsMaaSEnabled() {
+		return nil, nil
+	}
+
+	// Check if token manager is initialized
+	if r.MaaSTokenManager == nil {
+		return nil, fmt.Errorf("MaaS is enabled but token manager is not initialized")
+	}
+
+	// Acquire MaaS token
+	token, err := r.MaaSTokenManager.GetToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire MaaS token: %w", err)
+	}
+
+	// Build Authorization header
+	authHeader := &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{
+			Key:      "authorization",
+			RawValue: []byte(fmt.Sprintf("Bearer %s", token)),
+		},
+	}
+
+	logging.Debugf("Injecting MaaS Authorization header (token length: %d)", len(token))
+	return authHeader, nil
 }

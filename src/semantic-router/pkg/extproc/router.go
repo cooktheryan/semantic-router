@@ -12,6 +12,7 @@ import (
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/cache"
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/classification"
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/config"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/maas"
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/observability/logging"
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/services"
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/tools"
@@ -26,6 +27,7 @@ type OpenAIRouter struct {
 	PIIChecker           *pii.PolicyChecker
 	Cache                cache.CacheBackend
 	ToolsDatabase        *tools.ToolsDatabase
+	MaaSTokenManager     *maas.TokenManager // Optional: only initialized when MaaS is enabled
 }
 
 // Ensure OpenAIRouter implements the ext_proc calls
@@ -165,6 +167,24 @@ func NewOpenAIRouter(configPath string) (*OpenAIRouter, error) {
 		_ = autoSvc
 	}
 
+	// Initialize MaaS token manager if MaaS is enabled
+	var maasTokenManager *maas.TokenManager
+	if cfg.IsMaaSEnabled() {
+		logging.Infof("MaaS integration enabled - initializing token manager")
+		maasTokenManager, err = maas.NewTokenManager(
+			cfg.MaaS.APIURL,
+			cfg.GetMaaSServiceAccountTokenPath(),
+			cfg.GetMaaSTokenExpiration(),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create MaaS token manager: %w", err)
+		}
+		logging.Infof("MaaS token manager initialized (API URL: %s, Model URL: %s)",
+			cfg.MaaS.APIURL, cfg.MaaS.ModelURL)
+	} else {
+		logging.Infof("MaaS integration disabled - using vLLM/KServe endpoints")
+	}
+
 	router := &OpenAIRouter{
 		Config:               cfg,
 		CategoryDescriptions: categoryDescriptions,
@@ -172,6 +192,7 @@ func NewOpenAIRouter(configPath string) (*OpenAIRouter, error) {
 		PIIChecker:           piiChecker,
 		Cache:                semanticCache,
 		ToolsDatabase:        toolsDatabase,
+		MaaSTokenManager:     maasTokenManager,
 	}
 
 	return router, nil
