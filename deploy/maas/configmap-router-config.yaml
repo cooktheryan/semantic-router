@@ -258,9 +258,13 @@ data:
       enabled: true  # Enable MaaS-billing integration
 
       # Authentication header configuration
+      # IMPORTANT: The MaaS gateway must set tier_header based on quota status:
+      #   - If user has remaining quota: set actual tier (e.g., "premium")
+      #   - If user exhausted quota: set tier="free" for cost optimization
+      # This ensures quota-aware routing regardless of subscription tier.
       authentication:
         user_header: "x-auth-request-user"
-        tier_header: "x-auth-request-tier"
+        tier_header: "x-auth-request-tier"  # Quota-aware tier from MaaS gateway
         fallback_user: "unknown"
         fallback_tier: "free"
 

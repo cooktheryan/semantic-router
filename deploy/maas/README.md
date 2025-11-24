@@ -44,9 +44,21 @@ make run-router
                         v                       v
                  ┌──────────────┐      ┌──────────────────┐
                  │ User: alice  │      │  Prometheus      │
-                 │ Tier: premium│      │  (MaaS-billing)  │
+                 │ Tier: free*  │      │  (MaaS-billing)  │
                  └──────────────┘      └──────────────────┘
+
+* Quota-aware tier: MaaS gateway should set tier="free" when user exhausts quota
 ```
+
+### Important: Quota-Aware Tier Handling
+
+**The MaaS gateway MUST set the tier header based on quota status, not just subscription:**
+
+- User with premium subscription + quota remaining → `x-auth-request-tier: premium`
+- User with premium subscription + quota exhausted → `x-auth-request-tier: free`
+- User with free subscription → `x-auth-request-tier: free`
+
+This ensures semantic router applies cost optimization (caching, cheaper models) for users who have exhausted their quota, regardless of their subscription tier.
 
 ## Configuration
 
@@ -80,7 +92,7 @@ maas_integration:
 
 ### Configure Gateway Authentication
 
-Create Kuadrant AuthConfig:
+Create Kuadrant AuthConfig that sets quota-aware tier:
 
 ```yaml
 apiVersion: authorino.kuadrant.io/v1beta1
@@ -96,8 +108,19 @@ spec:
             value: "{auth.identity.username}"
         "x-auth-request-tier":
           plain:
-            value: "{auth.identity.tier}"
+            # IMPORTANT: Set tier based on quota status, not subscription
+            # If user exhausted quota, set tier="free" for cost optimization
+            # Example logic: quota_remaining > 0 ? subscription_tier : "free"
+            value: "{auth.identity.effective_tier}"  # Quota-aware tier
 ```
+
+**Critical:** The MaaS gateway authentication layer must compute `effective_tier` based on quota:
+
+```
+effective_tier = (quota_remaining > 0) ? subscription_tier : "free"
+```
+
+This ensures users who exhaust their quota are automatically downgraded to cost-optimized routing (aggressive caching, cheaper models) regardless of their subscription tier.
 
 ### Configure Prometheus Scraping
 
@@ -187,6 +210,41 @@ curl -v -X POST http://semantic-router:8801/v1/chat/completions \
 # Query MaaS Prometheus
 curl http://maas-prometheus:9090/api/v1/query?query=semantic_router_tokens_total
 ```
+
+## Tier-Based Cost Optimization (Future)
+
+Currently, the tier information is used **only for metrics labeling** to enable MaaS-billing usage tracking and cost calculation.
+
+**Future capability:** Tier-based routing decisions could be implemented to optimize costs:
+
+```yaml
+# Example future configuration
+decisions:
+  - name: "general_decision"
+    rules:
+      operator: "AND"
+      conditions:
+        - type: "domain"
+          name: "other"
+        - type: "tier"  # Future: tier-based conditions
+          value: "free"
+    plugins:
+      - type: "semantic-cache"
+        configuration:
+          enabled: true
+          similarity_threshold: 0.65  # More aggressive caching for free tier
+      - type: "model-selection"
+        configuration:
+          prefer_smaller_models: true  # Cost optimization for free tier
+```
+
+This would enable:
+
+- Free tier → aggressive caching, smaller/cheaper models
+- Premium tier → less caching, larger/better models, reasoning enabled
+- Users who exhaust quota → automatically get free tier optimizations
+
+The quota-aware tier pattern ensures this works correctly: when a premium user exhausts their quota, the MaaS gateway sets `tier=free`, triggering automatic cost optimization.
 
 ## Operational Modes
 
